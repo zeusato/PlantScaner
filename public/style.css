@@ -26,7 +26,8 @@
   padding: 0;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   width: 100%;
   font-family: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -43,7 +44,7 @@ body::before {
   left: 0;
   right: 0;
   bottom: 0;
-  background-image: 
+  background-image:
     radial-gradient(circle at 20% 80%, rgba(34, 197, 94, 0.15) 0%, transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(34, 197, 94, 0.1) 0%, transparent 50%),
     radial-gradient(circle at 50% 50%, rgba(34, 197, 94, 0.05) 0%, transparent 70%);
@@ -139,6 +140,34 @@ header {
   font-weight: 600;
 }
 
+/* Capture Button */
+.capture-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 1rem 2rem;
+  background: linear-gradient(145deg, var(--primary), var(--primary-dark));
+  color: #fff;
+  border: none;
+  border-radius: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.4);
+  margin-top: 1rem;
+}
+
+.capture-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(34, 197, 94, 0.5);
+}
+
+.capture-btn:active {
+  transform: translateY(0);
+}
+
 /* Scan Button - Hero Element */
 .scan-btn {
   position: relative;
@@ -153,7 +182,7 @@ header {
   letter-spacing: 2px;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 
+  box-shadow:
     0 0 0 0 rgba(34, 197, 94, 0.4),
     0 20px 40px -10px rgba(34, 197, 94, 0.5),
     inset 0 -4px 20px rgba(0, 0, 0, 0.2);
@@ -187,9 +216,12 @@ header {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.02);
   }
@@ -201,6 +233,7 @@ header {
     height: 100%;
     opacity: 0.6;
   }
+
   100% {
     width: 150%;
     height: 150%;
@@ -210,7 +243,7 @@ header {
 
 .scan-btn:hover {
   transform: scale(1.05);
-  box-shadow: 
+  box-shadow:
     0 0 30px rgba(34, 197, 94, 0.6),
     0 25px 50px -10px rgba(34, 197, 94, 0.6);
 }
@@ -240,6 +273,7 @@ header {
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -307,8 +341,13 @@ header {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-content {
@@ -328,6 +367,7 @@ header {
     opacity: 0;
     transform: scale(0.9);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -437,29 +477,29 @@ header {
   #app {
     padding: 1.5rem 1rem;
   }
-  
+
   header {
     padding: 0.875rem 1rem;
   }
-  
+
   .title {
     font-size: 1.25rem;
   }
-  
+
   .scan-btn {
     width: 160px;
     height: 160px;
     font-size: 1.5rem;
   }
-  
+
   .modal-content {
     padding: 1.5rem;
   }
-  
+
   .modal-buttons {
     flex-direction: column;
   }
-  
+
   .modal-buttons button {
     width: 100%;
   }

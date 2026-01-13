@@ -4,10 +4,8 @@
  * This script manages the user interface flow for capturing three
  * photographs (whole plant, close‑up of a healthy leaf and close‑up of
  * a problematic part), compressing them, sending them to the backend
- * for identification and disease detection, and optionally calling
- * Gemini for a more detailed analysis. It also handles storing the
- * user's Gemini API key in IndexedDB and exposes basic settings to
- * update or remove the key.
+ * for identification and disease detection, and calling Gemini for
+ * detailed analysis.
  */
 
 (function () {
@@ -29,20 +27,16 @@
   // In‑memory state for the current scanning session
   let capturedImages = [];
   let currentStep = 0;
-  let isCapturing = false; // Flag to prevent double triggers
 
   // Step labels for the capture flow
   const stepLabels = [
-    'Ảnh 1: Chụp toàn bộ cây.',
-    'Ảnh 2: Chụp cận cảnh lá khỏe mạnh.',
-    'Ảnh 3: Chụp cận cảnh vùng bị bệnh hoặc lá khác.'
+    'Ảnh 1/3: Chụp toàn bộ cây',
+    'Ảnh 2/3: Chụp cận cảnh lá khỏe mạnh',
+    'Ảnh 3/3: Chụp cận cảnh vùng bị bệnh hoặc lá khác'
   ];
 
   /**
-   * Compress an image file by drawing it onto a canvas and exporting
-   * it as a JPEG data URI. Reduces large camera images to a maximum
-   * dimension of 1280px with a quality of 0.7. Returns a promise
-   * resolving to the data URI.
+   * Compress an image file to JPEG with max dimension 1280px
    */
   function compressImage(file) {
     return new Promise((resolve) => {
@@ -79,58 +73,76 @@
   }
 
   /**
-   * Start a new scanning flow. Clears previous images and prompts
-   * the user to capture three pictures in order.
+   * Update the UI to show capture progress with preview and next button
+   */
+  function updateCaptureUI() {
+    let html = `<p><strong>${stepLabels[currentStep]}</strong></p>`;
+
+    // Show captured images thumbnails
+    if (capturedImages.length > 0) {
+      html += '<div style="display:flex;gap:8px;margin:10px 0;justify-content:center;">';
+      capturedImages.forEach((img, idx) => {
+        html += `<img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:2px solid var(--primary);" alt="Ảnh ${idx + 1}">`;
+      });
+      html += '</div>';
+    }
+
+    html += `<button id="captureBtn" class="capture-btn">📷 Chụp ảnh</button>`;
+
+    instructionsDiv.innerHTML = html;
+
+    // Add event listener to the new button
+    document.getElementById('captureBtn').addEventListener('click', () => {
+      fileInput.value = '';
+      fileInput.click();
+    });
+  }
+
+  /**
+   * Start a new scanning flow
    */
   function startScan() {
     capturedImages = [];
     currentStep = 0;
-    isCapturing = true;
     resultsDiv.classList.add('hidden');
-    instructionsDiv.innerHTML = `<p>${stepLabels[currentStep]}</p>`;
-    // Trigger the file input; we wait a tick to allow UI updates
-    fileInput.value = ''; // Reset input
-    setTimeout(() => fileInput.click(), 100);
+    scanButton.style.display = 'none';
+    updateCaptureUI();
   }
 
   /**
-   * Advance to the next capture step or perform the identification once
-   * all three images have been gathered.
+   * Handle when a photo is captured
    */
-  function handleNextCapture(dataUri) {
-    if (!isCapturing) return; // Ignore if not in capture mode
+  async function handleCapture(file) {
+    if (!file) return;
 
+    const dataUri = await compressImage(file);
     capturedImages.push(dataUri);
     currentStep++;
 
-    console.log(`Captured image ${currentStep}/3`); // Debug log
-
     if (currentStep < 3) {
-      // More images needed
-      instructionsDiv.innerHTML = `<p>${stepLabels[currentStep]}</p>`;
-      fileInput.value = ''; // Reset input for next capture
-      setTimeout(() => {
-        fileInput.click();
-      }, 300); // Slightly longer delay for reliability
+      // More images needed - show UI for next capture
+      updateCaptureUI();
     } else {
-      // Collected 3 images, begin processing
-      isCapturing = false;
-      instructionsDiv.innerHTML = '<p>Đang phân tích hình ảnh...</p>';
-      scanButton.disabled = true;
-      performIdentification().finally(() => {
-        scanButton.disabled = false;
-      });
+      // All 3 images captured, start analysis
+      instructionsDiv.innerHTML = '<p>⏳ Đang phân tích hình ảnh...</p>';
+      scanButton.style.display = 'none';
+
+      try {
+        await performIdentification();
+      } finally {
+        // Reset UI
+        scanButton.style.display = '';
+        instructionsDiv.innerHTML = '<p>Nhấn nút <strong>SCAN</strong> để bắt đầu.</p>';
+      }
     }
   }
 
   /**
-   * Send images to the backend for identification and optionally call
-   * Gemini for additional analysis. Displays the final result in
-   * the resultsDiv.
+   * Send images to backend and/or Gemini for analysis
    */
   async function performIdentification() {
     try {
-      // Build request payload for the backend
+      // First try Pl@ntNet via backend
       const organs = ['auto', 'auto', 'auto'];
       const payload = {
         images: capturedImages,
@@ -138,23 +150,30 @@
         detectDisease: true,
         lang: 'vi'
       };
-      const response = await fetch('/identify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await response.json();
-      let result = buildResultFromPlantnet(data);
-      const needGemini = shouldUseGemini(data);
-      if (needGemini) {
-        const gemKey = await getKey();
-        if (gemKey) {
-          const gemResult = await callGemini(gemKey, capturedImages);
-          if (gemResult) {
-            result = gemResult;
-          }
+
+      let result = null;
+
+      try {
+        const response = await fetch('/identify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        result = buildResultFromPlantnet(data);
+      } catch (e) {
+        console.log('Pl@ntNet failed, falling back to Gemini');
+      }
+
+      // Always try Gemini for better results
+      const gemKey = await getKey();
+      if (gemKey) {
+        const gemResult = await callGemini(gemKey, capturedImages);
+        if (gemResult) {
+          result = gemResult;
         }
       }
+
       displayResult(result);
     } catch (err) {
       resultsDiv.classList.remove('hidden');
@@ -163,60 +182,39 @@
   }
 
   /**
-   * Determine whether a Gemini call should be attempted. Returns true
-   * if the identification results appear insufficient (e.g. no
-   * results or very low confidence).
-   */
-  function shouldUseGemini(data) {
-    if (!data || !data.identify || !Array.isArray(data.identify.results) || data.identify.results.length === 0) {
-      return true;
-    }
-    const top = data.identify.results[0];
-    if (typeof top.score === 'number' && top.score < 0.35) {
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Build a simplified result object from Pl@ntNet identification and
-   * disease responses. Only the most useful fields are extracted.
+   * Build result from Pl@ntNet response
    */
   function buildResultFromPlantnet(data) {
     const output = {};
     if (data && data.identify && Array.isArray(data.identify.results) && data.identify.results.length > 0) {
       const top = data.identify.results[0];
       output.best_match = {
-        scientific_name: top.species && top.species.scientificNameWithoutAuthor ? top.species.scientificNameWithoutAuthor : (data.identify.bestMatch || ''),
-        common_name: (top.species && Array.isArray(top.species.commonNames) && top.species.commonNames.length > 0) ? top.species.commonNames[0] : '',
+        scientific_name: top.species?.scientificNameWithoutAuthor || data.identify.bestMatch || '',
+        common_name: top.species?.commonNames?.[0] || '',
         confidence: top.score
       };
-      output.alternatives = data.identify.results.slice(1, 5).map((r) => {
-        return {
-          scientific_name: r.species && r.species.scientificNameWithoutAuthor ? r.species.scientificNameWithoutAuthor : '',
-          confidence: r.score
-        };
-      });
+      output.alternatives = data.identify.results.slice(1, 5).map((r) => ({
+        scientific_name: r.species?.scientificNameWithoutAuthor || '',
+        confidence: r.score
+      }));
     }
-    if (data && data.diseases && Array.isArray(data.diseases.results) && data.diseases.results.length > 0) {
+    if (data?.diseases?.results?.length > 0) {
       output.health_assessment = {
-        issues: data.diseases.results.map((r) => {
-          return {
-            name: r.label || r.name || '',
-            likelihood: r.score
-          };
-        })
+        issues: data.diseases.results.map((r) => ({
+          name: r.label || r.name || '',
+          likelihood: r.score
+        }))
       };
     }
     return output;
   }
 
   /**
-   * Call the Gemini API using Google Generative AI SDK with gemini-3-flash-preview model.
+   * Call Gemini API with gemini-3-flash-preview model
    */
   async function callGemini(apiKey, images) {
     try {
-      // Prepare image parts for the API
+      // Prepare image parts
       const imageParts = images.map((uri) => {
         const commaIndex = uri.indexOf(',');
         const mime = uri.substring(5, uri.indexOf(';'));
@@ -229,7 +227,6 @@
         };
       });
 
-      // Compose prompt
       const prompt = `Bạn là một chuyên gia thực vật học. Hãy phân tích các hình ảnh cây trồng được cung cấp và trả về một JSON object với các thông tin sau:
 
 {
@@ -275,7 +272,6 @@
 Nếu không thể xác định được cây, hãy đưa ra gợi ý về loại ảnh bổ sung cần chụp.
 Chỉ trả về JSON hợp lệ, không có text nào khác.`;
 
-      // Build request using REST API with gemini-3-flash-preview model
       const requestBody = {
         contents: [{
           parts: [
@@ -285,13 +281,13 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
         }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 2048,
-          responseMimeType: "application/json"
+          maxOutputTokens: 2048
         }
       };
 
+      // Use gemini-3-flash-preview model as requested
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${encodeURIComponent(apiKey)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -301,39 +297,24 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
 
       const json = await response.json();
 
-      // Check for API errors
       if (json.error) {
         console.error('Gemini API error:', json.error);
         return null;
       }
 
-      // Extract text from the first candidate
-      let text;
-      if (json && Array.isArray(json.candidates) && json.candidates.length > 0) {
-        const candidate = json.candidates[0];
-        if (candidate && candidate.content && Array.isArray(candidate.content.parts) && candidate.content.parts.length > 0) {
-          const part = candidate.content.parts[0];
-          if (part && part.text) {
-            text = part.text.trim();
-          }
-        }
-      }
+      // Extract text from response
+      let text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
       if (text) {
+        // Clean markdown code blocks if present
+        if (text.startsWith('```json')) text = text.slice(7);
+        else if (text.startsWith('```')) text = text.slice(3);
+        if (text.endsWith('```')) text = text.slice(0, -3);
+
         try {
-          // Clean up potential markdown code blocks
-          let cleanText = text;
-          if (cleanText.startsWith('```json')) {
-            cleanText = cleanText.slice(7);
-          } else if (cleanText.startsWith('```')) {
-            cleanText = cleanText.slice(3);
-          }
-          if (cleanText.endsWith('```')) {
-            cleanText = cleanText.slice(0, -3);
-          }
-          return JSON.parse(cleanText.trim());
+          return JSON.parse(text.trim());
         } catch (e) {
-          console.warn('Gemini returned unparseable JSON', e, text);
+          console.warn('Gemini returned unparseable JSON', e);
         }
       }
     } catch (err) {
@@ -343,7 +324,7 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
   }
 
   /**
-   * Display the result object in the resultsDiv as formatted content.
+   * Display results in a nice format
    */
   function displayResult(result) {
     resultsDiv.classList.remove('hidden');
@@ -354,7 +335,6 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
       return;
     }
 
-    // Create a nicely formatted display
     let html = '';
 
     if (result.best_match) {
@@ -373,16 +353,12 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
       if (result.health_assessment.status) {
         html += `<p>${result.health_assessment.status}</p>`;
       }
-      if (result.health_assessment.possible_issues && result.health_assessment.possible_issues.length > 0) {
+      if (result.health_assessment.possible_issues?.length > 0) {
         html += '<ul>';
         result.health_assessment.possible_issues.forEach(issue => {
           html += `<li><strong>${issue.name}</strong>`;
-          if (issue.likelihood) {
-            html += ` (${Math.round(issue.likelihood * 100)}%)`;
-          }
-          if (issue.safe_actions) {
-            html += `<br><small>💡 ${issue.safe_actions}</small>`;
-          }
+          if (issue.likelihood) html += ` (${Math.round(issue.likelihood * 100)}%)`;
+          if (issue.safe_actions) html += `<br><small>💡 ${issue.safe_actions}</small>`;
           html += '</li>';
         });
         html += '</ul>';
@@ -390,8 +366,7 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
     }
 
     if (result.care_guide) {
-      html += `<h3>📚 Hướng dẫn chăm sóc</h3>`;
-      html += '<ul>';
+      html += `<h3>📚 Hướng dẫn chăm sóc</h3><ul>`;
       if (result.care_guide.watering) html += `<li><strong>Tưới nước:</strong> ${result.care_guide.watering}</li>`;
       if (result.care_guide.light) html += `<li><strong>Ánh sáng:</strong> ${result.care_guide.light}</li>`;
       if (result.care_guide.soil) html += `<li><strong>Đất:</strong> ${result.care_guide.soil}</li>`;
@@ -399,141 +374,83 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
       html += '</ul>';
     }
 
-    if (result.fun_facts && result.fun_facts.length > 0) {
-      html += `<h3>✨ Thông tin thú vị</h3>`;
-      html += '<ul>';
-      result.fun_facts.forEach(fact => {
-        html += `<li>${fact}</li>`;
-      });
+    if (result.fun_facts?.length > 0) {
+      html += `<h3>✨ Thông tin thú vị</h3><ul>`;
+      result.fun_facts.forEach(fact => html += `<li>${fact}</li>`);
       html += '</ul>';
     }
 
-    // Fallback to JSON if minimal data
-    if (html === '') {
-      const pre = document.createElement('pre');
-      pre.textContent = JSON.stringify(result, null, 2);
-      resultsDiv.appendChild(pre);
-    } else {
-      resultsDiv.innerHTML = html;
-    }
+    resultsDiv.innerHTML = html || `<pre>${JSON.stringify(result, null, 2)}</pre>`;
   }
 
-  /**
-   * Open a connection to IndexedDB and return the database instance.
-   */
+  // IndexedDB functions
   function openDB() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('plantScannerDB', 1);
-      request.onupgradeneeded = function (event) {
-        const db = event.target.result;
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings');
         }
       };
-      request.onsuccess = function (event) {
-        resolve(event.target.result);
-      };
-      request.onerror = function () {
-        reject(request.error);
-      };
+      request.onsuccess = (e) => resolve(e.target.result);
+      request.onerror = () => reject(request.error);
     });
   }
 
-  /**
-   * Retrieve the stored Gemini API key from IndexedDB.
-   */
   async function getKey() {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('settings', 'readonly');
-      const store = tx.objectStore('settings');
-      const req = store.get('geminiKey');
+      const req = tx.objectStore('settings').get('geminiKey');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
   }
 
-  /**
-   * Store the Gemini API key in IndexedDB.
-   */
   async function saveKey(key) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('settings', 'readwrite');
-      const store = tx.objectStore('settings');
-      const req = store.put(key, 'geminiKey');
+      const req = tx.objectStore('settings').put(key, 'geminiKey');
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
   }
 
-  /**
-   * Remove the stored Gemini API key from IndexedDB.
-   */
   async function deleteKey() {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('settings', 'readwrite');
-      const store = tx.objectStore('settings');
-      const req = store.delete('geminiKey');
+      const req = tx.objectStore('settings').delete('geminiKey');
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
   }
 
-  /**
-   * Show a modal element by adding the `show` class.
-   */
-  function showModal(modal) {
-    modal.classList.add('show');
-  }
+  function showModal(modal) { modal.classList.add('show'); }
+  function hideModal(modal) { modal.classList.remove('show'); }
 
-  /**
-   * Hide a modal element by removing the `show` class.
-   */
-  function hideModal(modal) {
-    modal.classList.remove('show');
-  }
-
-  /**
-   * Update the key status text in the settings modal.
-   */
   async function updateKeyStatus() {
     const key = await getKey();
-    if (key) {
-      keyStatus.textContent = 'Đã lưu khóa Gemini.';
-    } else {
-      keyStatus.textContent = 'Chưa có khóa Gemini.';
-    }
+    keyStatus.textContent = key ? 'Đã lưu khóa Gemini.' : 'Chưa có khóa Gemini.';
   }
 
   // Event listeners
   window.addEventListener('DOMContentLoaded', async () => {
-    // Register service worker
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js').catch((err) => console.error('Service worker registration failed', err));
+      navigator.serviceWorker.register('service-worker.js').catch(console.error);
     }
-    // Prompt for key if not stored
     const storedKey = await getKey();
-    if (!storedKey) {
-      showModal(keyModal);
-    }
+    if (!storedKey) showModal(keyModal);
     updateKeyStatus();
   });
 
-  scanButton.addEventListener('click', () => {
-    startScan();
-  });
+  scanButton.addEventListener('click', startScan);
 
-  fileInput.addEventListener('change', async (e) => {
-    const file = fileInput.files[0];
-    if (!file) {
-      console.log('No file selected');
-      return;
-    }
-    console.log('File selected:', file.name);
-    const dataUri = await compressImage(file);
-    handleNextCapture(dataUri);
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) handleCapture(file);
   });
 
   saveKeyButton.addEventListener('click', async () => {
@@ -550,13 +467,14 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
     updateKeyStatus();
     showModal(settingsModal);
   });
-  closeSettingsButton.addEventListener('click', () => {
-    hideModal(settingsModal);
-  });
+
+  closeSettingsButton.addEventListener('click', () => hideModal(settingsModal));
+
   changeKeyButton.addEventListener('click', () => {
     hideModal(settingsModal);
     showModal(keyModal);
   });
+
   deleteKeyButton.addEventListener('click', async () => {
     await deleteKey();
     hideModal(settingsModal);
