@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Plant Scanner</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <meta name="theme-color" content="#2e7d32">
+</head>
+<body>
+  <div id="app">
+    <!-- Gemini API key modal -->
+    <div id="keyModal" class="modal">
+      <div class="modal-content">
+        <h2>Nhập khóa API Gemini</h2>
+        <p>Để sử dụng tính năng phân tích nâng cao, bạn cần cung cấp khóa API Gemini của riêng mình. Khóa này sẽ được lưu cục bộ trên thiết bị của bạn (IndexedDB) và không được gửi tới máy chủ.</p>
+        <input id="apiKeyInput" type="password" placeholder="Gemini API Key">
+        <div class="modal-buttons">
+          <button id="saveKeyButton">Lưu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings modal -->
+    <div id="settingsModal" class="modal">
+      <div class="modal-content">
+        <h2>Cài đặt API</h2>
+        <div id="keyStatus"></div>
+        <div class="modal-buttons">
+          <button id="changeKeyButton">Thay đổi khóa</button>
+          <button id="deleteKeyButton">Xóa khóa</button>
+          <button id="closeSettingsButton">Đóng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Header with settings icon -->
+    <header>
+      <h1 class="title">Plant Scanner</h1>
+      <button id="settingsButton" class="settings-btn" title="Cài đặt">
+        &#9881;
+      </button>
+    </header>
+
+    <!-- Instruction area -->
+    <div id="instructions" class="instructions">
+      <p>Nhấn nút <strong>SCAN</strong> để bắt đầu.</p>
+    </div>
+
+    <!-- Scan button -->
+    <button id="scanButton" class="scan-btn">SCAN</button>
+
+    <!-- Hidden file input for capturing images -->
+    <input id="fileInput" type="file" accept="image/*" capture="environment" class="hidden" />
+
+    <!-- Results container -->
+    <div id="results" class="results hidden"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

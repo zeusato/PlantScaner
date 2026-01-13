@@ -1,0 +1,22 @@
+{
+  "name": "plant-pwa",
+  "version": "1.0.0",
+  "description": "PWA for plant identification and disease detection using Pl@ntNet and Gemini APIs.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "keywords": [
+    "pwa",
+    "plant",
+    "identification",
+    "gemini",
+    "plantnet"
+  ],
+  "license": "MIT"
+}
