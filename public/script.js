@@ -1,6 +1,6 @@
 /*
  * Plant Scanner PWA - Front-end Logic
- * Flow: Instruction -> Scan -> Camera -> Confirm (x3) -> API Call
+ * Flow: Show instruction -> User clicks SCAN -> Camera -> Confirm -> Repeat x3 -> API
  */
 
 (function () {
@@ -20,8 +20,9 @@
   const keyStatus = document.getElementById('keyStatus');
 
   // ========== STATE ==========
-  let imageCounter = 0; // 0, 1, 2, 3 (3 means done)
-  let capturedImages = []; // Array of data URIs
+  let imageCounter = 0; // 0, 1, 2 (index of current step), 3 means all done
+  let capturedImages = [];
+  let isProcessingFile = false; // Flag to prevent double processing
 
   // Instructions for each step
   const INSTRUCTIONS = [
@@ -30,30 +31,24 @@
     'Bước 3/3: Chụp ảnh <strong>vùng bị bệnh hoặc lá khác</strong>'
   ];
 
-  // ========== UI UPDATE ==========
-  function updateUI() {
-    console.log('[STATE] imageCounter =', imageCounter, '| capturedImages.length =', capturedImages.length);
+  // ========== SHOW CURRENT STEP ==========
+  function showCurrentStep() {
+    console.log('[UI] Showing step, counter =', imageCounter);
 
-    if (imageCounter < 3) {
-      // Show instruction and enable scan button
-      instructionsDiv.innerHTML = `<p>${INSTRUCTIONS[imageCounter]}</p>`;
-      scanButton.textContent = 'SCAN';
-      scanButton.disabled = false;
-      resultsDiv.classList.add('hidden');
-    } else {
-      // All 3 images captured, start processing
+    if (imageCounter >= 3) {
+      // All done, process images
       instructionsDiv.innerHTML = '<p>⏳ Đang phân tích hình ảnh...</p>';
-      scanButton.disabled = true;
+      scanButton.style.display = 'none';
       processImages();
+      return;
     }
-  }
 
-  // ========== RESET ==========
-  function resetState() {
-    imageCounter = 0;
-    capturedImages = [];
-    fileInput.value = '';
-    updateUI();
+    // Show instruction for current step
+    instructionsDiv.innerHTML = `<p>${INSTRUCTIONS[imageCounter]}</p>`;
+    scanButton.textContent = 'SCAN';
+    scanButton.style.display = '';
+    scanButton.disabled = false;
+    resultsDiv.classList.add('hidden');
   }
 
   // ========== COMPRESS IMAGE ==========
@@ -81,34 +76,68 @@
   }
 
   // ========== SCAN BUTTON CLICK ==========
-  scanButton.addEventListener('click', () => {
-    console.log('[CLICK] Scan button clicked, opening camera...');
-    fileInput.value = ''; // Reset file input
-    fileInput.click(); // Open camera
-  });
+  scanButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-  // ========== FILE INPUT CHANGE (Image captured) ==========
-  fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-      console.log('[FILE] No file selected');
+    console.log('[SCAN] Button clicked. Current counter:', imageCounter);
+
+    // Don't open camera if already processing or if all images captured
+    if (isProcessingFile || imageCounter >= 3) {
+      console.log('[SCAN] Blocked - processing or done');
       return;
     }
 
-    console.log('[FILE] Image captured:', file.name);
+    // Clear input and open camera
+    fileInput.value = '';
 
-    // Compress and save image
-    const dataUri = await compressImage(file);
-    capturedImages.push(dataUri);
-    imageCounter++;
-
-    console.log('[FILE] Image saved. Counter now:', imageCounter);
-
-    // Update UI for next step
-    updateUI();
+    // Use setTimeout to ensure the click happens after value reset
+    setTimeout(() => {
+      fileInput.click();
+    }, 50);
   });
 
-  // ========== PROCESS IMAGES (Call APIs) ==========
+  // ========== FILE INPUT CHANGE ==========
+  fileInput.addEventListener('change', async (e) => {
+    // Prevent double processing
+    if (isProcessingFile) {
+      console.log('[FILE] Already processing, ignoring');
+      return;
+    }
+
+    const file = e.target.files && e.target.files[0];
+    if (!file) {
+      console.log('[FILE] No file selected, user cancelled');
+      return;
+    }
+
+    console.log('[FILE] Got file:', file.name, 'for step', imageCounter + 1);
+
+    // Set flag to prevent double processing
+    isProcessingFile = true;
+    scanButton.disabled = true;
+
+    try {
+      // Compress and store image
+      const dataUri = await compressImage(file);
+      capturedImages.push(dataUri);
+      imageCounter++;
+
+      console.log('[FILE] Saved! Counter now:', imageCounter, 'Total images:', capturedImages.length);
+
+      // Clear file input
+      fileInput.value = '';
+
+      // Show next step (do NOT auto-open camera)
+      showCurrentStep();
+    } catch (err) {
+      console.error('[FILE] Error:', err);
+    } finally {
+      isProcessingFile = false;
+    }
+  });
+
+  // ========== PROCESS IMAGES ==========
   async function processImages() {
     console.log('[PROCESS] Starting with', capturedImages.length, 'images');
 
@@ -135,7 +164,7 @@
         console.log('[PLANTNET] Failed:', err.message);
       }
 
-      // Use Gemini for better results
+      // Use Gemini
       const apiKey = await getKey();
       if (apiKey) {
         const geminiResult = await callGemini(apiKey, capturedImages);
@@ -149,11 +178,12 @@
       resultsDiv.classList.remove('hidden');
       resultsDiv.innerHTML = `<p class="error">Lỗi: ${err.message}</p>`;
     } finally {
-      // Reset for next scan
-      scanButton.disabled = false;
-      instructionsDiv.innerHTML = '<p>Nhấn <strong>SCAN</strong> để quét cây mới.</p>';
+      // Reset state for next scan
       imageCounter = 0;
       capturedImages = [];
+      scanButton.style.display = '';
+      scanButton.disabled = false;
+      instructionsDiv.innerHTML = '<p>Nhấn <strong>SCAN</strong> để quét cây mới.</p>';
     }
   }
 
@@ -179,12 +209,13 @@
     return output;
   }
 
-  // ========== CALL GEMINI API (gemini-3-flash-preview) ==========
+  // ========== CALL GEMINI (gemini-3-flash-preview) ==========
   async function callGemini(apiKey, images) {
     const imageParts = images.map(uri => {
-      const [, mime, , base64] = uri.match(/^data:(.+);(base64),(.*)$/i) || [];
-      return { inlineData: { mimeType: mime, data: base64 } };
-    });
+      const match = uri.match(/^data:(.+);base64,(.*)$/i);
+      if (!match) return null;
+      return { inlineData: { mimeType: match[1], data: match[2] } };
+    }).filter(Boolean);
 
     const prompt = `Bạn là chuyên gia thực vật học. Phân tích ảnh cây và trả về JSON:
 {
@@ -215,7 +246,6 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
       }
 
       let text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-      // Clean markdown
       text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
       return JSON.parse(text);
     } catch (err) {
@@ -275,7 +305,7 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
     resultsDiv.innerHTML = html || `<pre>${JSON.stringify(result, null, 2)}</pre>`;
   }
 
-  // ========== INDEXEDDB (API Key Storage) ==========
+  // ========== INDEXEDDB ==========
   function openDB() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open('plantScannerDB', 1);
@@ -324,14 +354,16 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
     keyStatus.textContent = (await getKey()) ? 'Đã lưu khóa Gemini.' : 'Chưa có khóa Gemini.';
   }
 
-  // ========== EVENT LISTENERS ==========
+  // ========== INIT ==========
   window.addEventListener('DOMContentLoaded', async () => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js').catch(console.error);
     }
     if (!(await getKey())) showModal(keyModal);
     updateKeyStatus();
-    updateUI(); // Show first instruction
+
+    // Show first step
+    showCurrentStep();
   });
 
   saveKeyButton.addEventListener('click', async () => {
