@@ -1,15 +1,10 @@
 /*
- * Front‑end logic for the Plant Scanner PWA.
- *
- * This script manages the user interface flow for capturing three
- * photographs (whole plant, close‑up of a healthy leaf and close‑up of
- * a problematic part), compressing them, sending them to the backend
- * for identification and disease detection, and calling Gemini for
- * detailed analysis.
+ * Plant Scanner PWA - Front-end Logic
+ * Flow: Instruction -> Scan -> Camera -> Confirm (x3) -> API Call
  */
 
 (function () {
-  // Grab DOM elements
+  // DOM Elements
   const scanButton = document.getElementById('scanButton');
   const instructionsDiv = document.getElementById('instructions');
   const fileInput = document.getElementById('fileInput');
@@ -24,47 +19,60 @@
   const closeSettingsButton = document.getElementById('closeSettingsButton');
   const keyStatus = document.getElementById('keyStatus');
 
-  // In‑memory state for the current scanning session
-  let capturedImages = [];
-  let currentStep = 0;
+  // ========== STATE ==========
+  let imageCounter = 0; // 0, 1, 2, 3 (3 means done)
+  let capturedImages = []; // Array of data URIs
 
-  // Step labels for the capture flow
-  const stepLabels = [
-    'Ảnh 1/3: Chụp toàn bộ cây',
-    'Ảnh 2/3: Chụp cận cảnh lá khỏe mạnh',
-    'Ảnh 3/3: Chụp cận cảnh vùng bị bệnh hoặc lá khác'
+  // Instructions for each step
+  const INSTRUCTIONS = [
+    'Bước 1/3: Chụp ảnh <strong>toàn cảnh cây</strong>',
+    'Bước 2/3: Chụp ảnh <strong>lá khỏe mạnh</strong>',
+    'Bước 3/3: Chụp ảnh <strong>vùng bị bệnh hoặc lá khác</strong>'
   ];
 
-  /**
-   * Compress an image file to JPEG with max dimension 1280px
-   */
+  // ========== UI UPDATE ==========
+  function updateUI() {
+    console.log('[STATE] imageCounter =', imageCounter, '| capturedImages.length =', capturedImages.length);
+
+    if (imageCounter < 3) {
+      // Show instruction and enable scan button
+      instructionsDiv.innerHTML = `<p>${INSTRUCTIONS[imageCounter]}</p>`;
+      scanButton.textContent = 'SCAN';
+      scanButton.disabled = false;
+      resultsDiv.classList.add('hidden');
+    } else {
+      // All 3 images captured, start processing
+      instructionsDiv.innerHTML = '<p>⏳ Đang phân tích hình ảnh...</p>';
+      scanButton.disabled = true;
+      processImages();
+    }
+  }
+
+  // ========== RESET ==========
+  function resetState() {
+    imageCounter = 0;
+    capturedImages = [];
+    fileInput.value = '';
+    updateUI();
+  }
+
+  // ========== COMPRESS IMAGE ==========
   function compressImage(file) {
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = function (e) {
+      reader.onload = (e) => {
         const img = new Image();
-        img.onload = function () {
-          let width = img.width;
-          let height = img.height;
-          const MAX_DIMENSION = 1280;
-          if (width > height) {
-            if (width > MAX_DIMENSION) {
-              height = Math.round((height * MAX_DIMENSION) / width);
-              width = MAX_DIMENSION;
-            }
-          } else {
-            if (height > MAX_DIMENSION) {
-              width = Math.round((width * MAX_DIMENSION) / height);
-              height = MAX_DIMENSION;
-            }
-          }
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          const MAX = 1280;
+          if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+
           const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          resolve(dataUrl);
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
         };
         img.src = e.target.result;
       };
@@ -72,135 +80,97 @@
     });
   }
 
-  /**
-   * Update the UI to show capture progress with preview and next button
-   */
-  function updateCaptureUI() {
-    let html = `<p><strong>${stepLabels[currentStep]}</strong></p>`;
+  // ========== SCAN BUTTON CLICK ==========
+  scanButton.addEventListener('click', () => {
+    console.log('[CLICK] Scan button clicked, opening camera...');
+    fileInput.value = ''; // Reset file input
+    fileInput.click(); // Open camera
+  });
 
-    // Show captured images thumbnails
-    if (capturedImages.length > 0) {
-      html += '<div style="display:flex;gap:8px;margin:10px 0;justify-content:center;">';
-      capturedImages.forEach((img, idx) => {
-        html += `<img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:2px solid var(--primary);" alt="Ảnh ${idx + 1}">`;
-      });
-      html += '</div>';
+  // ========== FILE INPUT CHANGE (Image captured) ==========
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+      console.log('[FILE] No file selected');
+      return;
     }
 
-    html += `<button id="captureBtn" class="capture-btn">📷 Chụp ảnh</button>`;
+    console.log('[FILE] Image captured:', file.name);
 
-    instructionsDiv.innerHTML = html;
-
-    // Add event listener to the new button
-    document.getElementById('captureBtn').addEventListener('click', () => {
-      fileInput.value = '';
-      fileInput.click();
-    });
-  }
-
-  /**
-   * Start a new scanning flow
-   */
-  function startScan() {
-    capturedImages = [];
-    currentStep = 0;
-    resultsDiv.classList.add('hidden');
-    scanButton.style.display = 'none';
-    updateCaptureUI();
-  }
-
-  /**
-   * Handle when a photo is captured
-   */
-  async function handleCapture(file) {
-    if (!file) return;
-
+    // Compress and save image
     const dataUri = await compressImage(file);
     capturedImages.push(dataUri);
-    currentStep++;
+    imageCounter++;
 
-    if (currentStep < 3) {
-      // More images needed - show UI for next capture
-      updateCaptureUI();
-    } else {
-      // All 3 images captured, start analysis
-      instructionsDiv.innerHTML = '<p>⏳ Đang phân tích hình ảnh...</p>';
-      scanButton.style.display = 'none';
+    console.log('[FILE] Image saved. Counter now:', imageCounter);
 
-      try {
-        await performIdentification();
-      } finally {
-        // Reset UI
-        scanButton.style.display = '';
-        instructionsDiv.innerHTML = '<p>Nhấn nút <strong>SCAN</strong> để bắt đầu.</p>';
-      }
-    }
-  }
+    // Update UI for next step
+    updateUI();
+  });
 
-  /**
-   * Send images to backend and/or Gemini for analysis
-   */
-  async function performIdentification() {
+  // ========== PROCESS IMAGES (Call APIs) ==========
+  async function processImages() {
+    console.log('[PROCESS] Starting with', capturedImages.length, 'images');
+
     try {
-      // First try Pl@ntNet via backend
-      const organs = ['auto', 'auto', 'auto'];
-      const payload = {
-        images: capturedImages,
-        organs: organs,
-        detectDisease: true,
-        lang: 'vi'
-      };
-
       let result = null;
 
+      // Try Pl@ntNet first
       try {
         const response = await fetch('/identify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            images: capturedImages,
+            organs: ['auto', 'auto', 'auto'],
+            detectDisease: true,
+            lang: 'vi'
+          })
         });
         const data = await response.json();
-        result = buildResultFromPlantnet(data);
-      } catch (e) {
-        console.log('Pl@ntNet failed, falling back to Gemini');
+        if (data.identify?.results?.length > 0) {
+          result = buildPlantnetResult(data);
+        }
+      } catch (err) {
+        console.log('[PLANTNET] Failed:', err.message);
       }
 
-      // Always try Gemini for better results
-      const gemKey = await getKey();
-      if (gemKey) {
-        const gemResult = await callGemini(gemKey, capturedImages);
-        if (gemResult) {
-          result = gemResult;
+      // Use Gemini for better results
+      const apiKey = await getKey();
+      if (apiKey) {
+        const geminiResult = await callGemini(apiKey, capturedImages);
+        if (geminiResult) {
+          result = geminiResult;
         }
       }
 
       displayResult(result);
     } catch (err) {
       resultsDiv.classList.remove('hidden');
-      resultsDiv.innerHTML = '<p class="error">Đã xảy ra lỗi: ' + err.message + '</p>';
+      resultsDiv.innerHTML = `<p class="error">Lỗi: ${err.message}</p>`;
+    } finally {
+      // Reset for next scan
+      scanButton.disabled = false;
+      instructionsDiv.innerHTML = '<p>Nhấn <strong>SCAN</strong> để quét cây mới.</p>';
+      imageCounter = 0;
+      capturedImages = [];
     }
   }
 
-  /**
-   * Build result from Pl@ntNet response
-   */
-  function buildResultFromPlantnet(data) {
+  // ========== BUILD PLANTNET RESULT ==========
+  function buildPlantnetResult(data) {
     const output = {};
-    if (data && data.identify && Array.isArray(data.identify.results) && data.identify.results.length > 0) {
-      const top = data.identify.results[0];
+    const top = data.identify?.results?.[0];
+    if (top) {
       output.best_match = {
-        scientific_name: top.species?.scientificNameWithoutAuthor || data.identify.bestMatch || '',
+        scientific_name: top.species?.scientificNameWithoutAuthor || '',
         common_name: top.species?.commonNames?.[0] || '',
         confidence: top.score
       };
-      output.alternatives = data.identify.results.slice(1, 5).map((r) => ({
-        scientific_name: r.species?.scientificNameWithoutAuthor || '',
-        confidence: r.score
-      }));
     }
-    if (data?.diseases?.results?.length > 0) {
+    if (data.diseases?.results?.length > 0) {
       output.health_assessment = {
-        issues: data.diseases.results.map((r) => ({
+        issues: data.diseases.results.map(r => ({
           name: r.label || r.name || '',
           likelihood: r.score
         }))
@@ -209,129 +179,57 @@
     return output;
   }
 
-  /**
-   * Call Gemini API with gemini-3-flash-preview model
-   */
+  // ========== CALL GEMINI API (gemini-3-flash-preview) ==========
   async function callGemini(apiKey, images) {
-    try {
-      // Prepare image parts
-      const imageParts = images.map((uri) => {
-        const commaIndex = uri.indexOf(',');
-        const mime = uri.substring(5, uri.indexOf(';'));
-        const base64 = uri.substring(commaIndex + 1);
-        return {
-          inlineData: {
-            mimeType: mime,
-            data: base64
-          }
-        };
-      });
+    const imageParts = images.map(uri => {
+      const [, mime, , base64] = uri.match(/^data:(.+);(base64),(.*)$/i) || [];
+      return { inlineData: { mimeType: mime, data: base64 } };
+    });
 
-      const prompt = `Bạn là một chuyên gia thực vật học. Hãy phân tích các hình ảnh cây trồng được cung cấp và trả về một JSON object với các thông tin sau:
-
+    const prompt = `Bạn là chuyên gia thực vật học. Phân tích ảnh cây và trả về JSON:
 {
-  "best_match": {
-    "scientific_name": "Tên khoa học",
-    "common_name": "Tên thông dụng (tiếng Việt)",
-    "family": "Họ thực vật",
-    "genus": "Chi",
-    "confidence": 0.95
-  },
-  "alternatives": [
-    {"scientific_name": "...", "confidence": 0.8}
-  ],
-  "habitat_and_habit": {
-    "preferred_light": "Ánh sáng cần thiết",
-    "water_need": "Nhu cầu nước",
-    "soil": "Loại đất phù hợp",
-    "temperature": "Nhiệt độ thích hợp"
-  },
-  "care_guide": {
-    "watering": "Hướng dẫn tưới nước",
-    "light": "Hướng dẫn ánh sáng",
-    "soil": "Hướng dẫn đất",
-    "fertilizing": "Hướng dẫn bón phân",
-    "pruning": "Hướng dẫn cắt tỉa",
-    "common_mistakes": ["Lỗi thường gặp"]
-  },
-  "fun_facts": ["Thông tin thú vị về cây"],
-  "health_assessment": {
-    "status": "Tình trạng sức khỏe chung",
-    "possible_issues": [
-      {
-        "name": "Tên vấn đề",
-        "likelihood": 0.7,
-        "signs_in_image": "Dấu hiệu nhận biết trong ảnh",
-        "checks_to_confirm": "Cách xác nhận",
-        "safe_actions": "Cách xử lý an toàn"
-      }
-    ]
-  }
+  "best_match": {"scientific_name": "", "common_name": "", "family": "", "confidence": 0.9},
+  "health_assessment": {"status": "", "possible_issues": [{"name": "", "likelihood": 0.7, "safe_actions": ""}]},
+  "care_guide": {"watering": "", "light": "", "soil": "", "fertilizing": ""},
+  "fun_facts": [""]
 }
+Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
 
-Nếu không thể xác định được cây, hãy đưa ra gợi ý về loại ảnh bổ sung cần chụp.
-Chỉ trả về JSON hợp lệ, không có text nào khác.`;
-
-      const requestBody = {
-        contents: [{
-          parts: [
-            { text: prompt },
-            ...imageParts
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 2048
-        }
-      };
-
-      // Use gemini-3-flash-preview model as requested
-      const response = await fetch(
+    try {
+      const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${encodeURIComponent(apiKey)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }, ...imageParts] }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
+          })
         }
       );
 
-      const json = await response.json();
-
+      const json = await res.json();
       if (json.error) {
-        console.error('Gemini API error:', json.error);
+        console.error('[GEMINI] Error:', json.error);
         return null;
       }
 
-      // Extract text from response
-      let text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-
-      if (text) {
-        // Clean markdown code blocks if present
-        if (text.startsWith('```json')) text = text.slice(7);
-        else if (text.startsWith('```')) text = text.slice(3);
-        if (text.endsWith('```')) text = text.slice(0, -3);
-
-        try {
-          return JSON.parse(text.trim());
-        } catch (e) {
-          console.warn('Gemini returned unparseable JSON', e);
-        }
-      }
+      let text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      // Clean markdown
+      text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      return JSON.parse(text);
     } catch (err) {
-      console.error('Gemini API error', err);
+      console.error('[GEMINI] Failed:', err);
+      return null;
     }
-    return null;
   }
 
-  /**
-   * Display results in a nice format
-   */
+  // ========== DISPLAY RESULT ==========
   function displayResult(result) {
     resultsDiv.classList.remove('hidden');
-    resultsDiv.innerHTML = '';
 
     if (!result || Object.keys(result).length === 0) {
-      resultsDiv.innerHTML = '<p>Không thể xác định loài cây. Hãy thử lại với ảnh khác.</p>';
+      resultsDiv.innerHTML = '<p>Không xác định được cây. Thử lại với ảnh khác.</p>';
       return;
     }
 
@@ -339,26 +237,20 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
 
     if (result.best_match) {
       html += `<h3>🌿 ${result.best_match.common_name || result.best_match.scientific_name}</h3>`;
-      html += `<p><strong>Tên khoa học:</strong> <em>${result.best_match.scientific_name}</em></p>`;
-      if (result.best_match.family) {
-        html += `<p><strong>Họ:</strong> ${result.best_match.family}</p>`;
-      }
-      if (result.best_match.confidence) {
-        html += `<p><strong>Độ tin cậy:</strong> ${Math.round(result.best_match.confidence * 100)}%</p>`;
-      }
+      html += `<p><em>${result.best_match.scientific_name}</em></p>`;
+      if (result.best_match.family) html += `<p>Họ: ${result.best_match.family}</p>`;
+      if (result.best_match.confidence) html += `<p>Độ tin cậy: ${Math.round(result.best_match.confidence * 100)}%</p>`;
     }
 
     if (result.health_assessment) {
-      html += `<h3>🏥 Tình trạng sức khỏe</h3>`;
-      if (result.health_assessment.status) {
-        html += `<p>${result.health_assessment.status}</p>`;
-      }
-      if (result.health_assessment.possible_issues?.length > 0) {
+      html += `<h3>🏥 Sức khỏe</h3>`;
+      if (result.health_assessment.status) html += `<p>${result.health_assessment.status}</p>`;
+      if (result.health_assessment.possible_issues?.length) {
         html += '<ul>';
-        result.health_assessment.possible_issues.forEach(issue => {
-          html += `<li><strong>${issue.name}</strong>`;
-          if (issue.likelihood) html += ` (${Math.round(issue.likelihood * 100)}%)`;
-          if (issue.safe_actions) html += `<br><small>💡 ${issue.safe_actions}</small>`;
+        result.health_assessment.possible_issues.forEach(i => {
+          html += `<li><strong>${i.name}</strong>`;
+          if (i.likelihood) html += ` (${Math.round(i.likelihood * 100)}%)`;
+          if (i.safe_actions) html += `<br><small>💡 ${i.safe_actions}</small>`;
           html += '</li>';
         });
         html += '</ul>';
@@ -366,43 +258,41 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
     }
 
     if (result.care_guide) {
-      html += `<h3>📚 Hướng dẫn chăm sóc</h3><ul>`;
-      if (result.care_guide.watering) html += `<li><strong>Tưới nước:</strong> ${result.care_guide.watering}</li>`;
-      if (result.care_guide.light) html += `<li><strong>Ánh sáng:</strong> ${result.care_guide.light}</li>`;
-      if (result.care_guide.soil) html += `<li><strong>Đất:</strong> ${result.care_guide.soil}</li>`;
-      if (result.care_guide.fertilizing) html += `<li><strong>Bón phân:</strong> ${result.care_guide.fertilizing}</li>`;
+      html += `<h3>📚 Chăm sóc</h3><ul>`;
+      if (result.care_guide.watering) html += `<li>💧 ${result.care_guide.watering}</li>`;
+      if (result.care_guide.light) html += `<li>☀️ ${result.care_guide.light}</li>`;
+      if (result.care_guide.soil) html += `<li>🌱 ${result.care_guide.soil}</li>`;
+      if (result.care_guide.fertilizing) html += `<li>🧪 ${result.care_guide.fertilizing}</li>`;
       html += '</ul>';
     }
 
-    if (result.fun_facts?.length > 0) {
-      html += `<h3>✨ Thông tin thú vị</h3><ul>`;
-      result.fun_facts.forEach(fact => html += `<li>${fact}</li>`);
+    if (result.fun_facts?.length) {
+      html += `<h3>✨ Thú vị</h3><ul>`;
+      result.fun_facts.forEach(f => html += `<li>${f}</li>`);
       html += '</ul>';
     }
 
     resultsDiv.innerHTML = html || `<pre>${JSON.stringify(result, null, 2)}</pre>`;
   }
 
-  // IndexedDB functions
+  // ========== INDEXEDDB (API Key Storage) ==========
   function openDB() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open('plantScannerDB', 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('settings')) {
-          db.createObjectStore('settings');
+      const req = indexedDB.open('plantScannerDB', 1);
+      req.onupgradeneeded = e => {
+        if (!e.target.result.objectStoreNames.contains('settings')) {
+          e.target.result.createObjectStore('settings');
         }
       };
-      request.onsuccess = (e) => resolve(e.target.result);
-      request.onerror = () => reject(request.error);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror = () => reject(req.error);
     });
   }
 
   async function getKey() {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction('settings', 'readonly');
-      const req = tx.objectStore('settings').get('geminiKey');
+      const req = db.transaction('settings', 'readonly').objectStore('settings').get('geminiKey');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -411,8 +301,7 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
   async function saveKey(key) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction('settings', 'readwrite');
-      const req = tx.objectStore('settings').put(key, 'geminiKey');
+      const req = db.transaction('settings', 'readwrite').objectStore('settings').put(key, 'geminiKey');
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
@@ -421,63 +310,42 @@ Chỉ trả về JSON hợp lệ, không có text nào khác.`;
   async function deleteKey() {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction('settings', 'readwrite');
-      const req = tx.objectStore('settings').delete('geminiKey');
+      const req = db.transaction('settings', 'readwrite').objectStore('settings').delete('geminiKey');
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
   }
 
-  function showModal(modal) { modal.classList.add('show'); }
-  function hideModal(modal) { modal.classList.remove('show'); }
+  // ========== MODALS ==========
+  const showModal = m => m.classList.add('show');
+  const hideModal = m => m.classList.remove('show');
 
   async function updateKeyStatus() {
-    const key = await getKey();
-    keyStatus.textContent = key ? 'Đã lưu khóa Gemini.' : 'Chưa có khóa Gemini.';
+    keyStatus.textContent = (await getKey()) ? 'Đã lưu khóa Gemini.' : 'Chưa có khóa Gemini.';
   }
 
-  // Event listeners
+  // ========== EVENT LISTENERS ==========
   window.addEventListener('DOMContentLoaded', async () => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js').catch(console.error);
     }
-    const storedKey = await getKey();
-    if (!storedKey) showModal(keyModal);
+    if (!(await getKey())) showModal(keyModal);
     updateKeyStatus();
-  });
-
-  scanButton.addEventListener('click', startScan);
-
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) handleCapture(file);
+    updateUI(); // Show first instruction
   });
 
   saveKeyButton.addEventListener('click', async () => {
-    const keyVal = apiKeyInput.value.trim();
-    if (keyVal) {
-      await saveKey(keyVal);
+    const val = apiKeyInput.value.trim();
+    if (val) {
+      await saveKey(val);
       apiKeyInput.value = '';
       hideModal(keyModal);
       updateKeyStatus();
     }
   });
 
-  settingsButton.addEventListener('click', () => {
-    updateKeyStatus();
-    showModal(settingsModal);
-  });
-
+  settingsButton.addEventListener('click', () => { updateKeyStatus(); showModal(settingsModal); });
   closeSettingsButton.addEventListener('click', () => hideModal(settingsModal));
-
-  changeKeyButton.addEventListener('click', () => {
-    hideModal(settingsModal);
-    showModal(keyModal);
-  });
-
-  deleteKeyButton.addEventListener('click', async () => {
-    await deleteKey();
-    hideModal(settingsModal);
-    showModal(keyModal);
-  });
+  changeKeyButton.addEventListener('click', () => { hideModal(settingsModal); showModal(keyModal); });
+  deleteKeyButton.addEventListener('click', async () => { await deleteKey(); hideModal(settingsModal); showModal(keyModal); });
 })();
