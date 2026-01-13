@@ -1,4 +1,4 @@
-name: Deploy to Production
+name: Deploy to Vercel
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     
     steps:
