@@ -24,8 +24,8 @@
   const retakeButton = document.getElementById('retakeButton');
   const confirmButton = document.getElementById('confirmButton');
 
-  // Session Key
-  const SESSION_KEY = 'plantScanner_session';
+  // Session Key (now used for IDB ID)
+  const SESSION_ID = 'current_session';
 
   // ========== STATE ==========
   let imageCounter = 0; // 0, 1, 2
@@ -96,7 +96,7 @@
 
   // ========== SCAN BUTTON CLICK ==========
   // ========== SCAN BUTTON CLICK ==========
-  scanButton.addEventListener('click', (e) => {
+  scanButton.addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -105,7 +105,8 @@
     // If we are in "Done" state (counter >= 3), this button acts as "Start New"
     if (imageCounter >= 3) {
       console.log('[SCAN] Starting new session');
-      clearSession(); // Clear storage
+      console.log('[SCAN] Starting new session');
+      await clearSession(); // Clear storage
       imageCounter = 0;
       capturedImages = [];
       resultsDiv.classList.add('hidden');
@@ -165,13 +166,13 @@
     showCurrentStep();
   });
 
-  confirmButton.addEventListener('click', () => {
+  confirmButton.addEventListener('click', async () => {
     console.log('[REVIEW] Confirm clicked');
     if (!currentDraft) return;
 
     capturedImages.push(currentDraft);
     imageCounter++;
-    saveSession(); // Save progress
+    await saveSession(); // Save progress (async)
     currentDraft = null;
 
     if (imageCounter >= 3) {
@@ -236,7 +237,7 @@
     } finally {
       // Set state to DONE (4) so Scan button becomes "Start New"
       imageCounter = 4;
-      clearSession(); // Job done, clear session
+      await clearSession(); // Job done, clear session
 
       scanButton.textContent = 'QUÉT CÂY KHÁC';
       scanButton.style.display = '';
@@ -366,10 +367,14 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
   // ========== INDEXEDDB ==========
   function openDB() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('plantScannerDB', 1);
+      const req = indexedDB.open('plantScannerDB', 2);
       req.onupgradeneeded = e => {
-        if (!e.target.result.objectStoreNames.contains('settings')) {
-          e.target.result.createObjectStore('settings');
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings');
+        }
+        if (!db.objectStoreNames.contains('session')) {
+          db.createObjectStore('session');
         }
       };
       req.onsuccess = e => resolve(e.target.result);
@@ -405,27 +410,49 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
   }
 
   // ========== SESSION STORAGE ==========
-  function saveSession() {
+  // ========== SESSION STORAGE (IndexedDB) ==========
+  async function saveSession() {
     try {
+      const db = await openDB();
       const data = { imageCounter, capturedImages };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(data));
-      console.log('[SESSION] Saved state:', data.imageCounter);
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('session', 'readwrite');
+        const store = tx.objectStore('session');
+        store.put(data, SESSION_ID);
+        tx.oncomplete = () => {
+          console.log('[SESSION] Saved state:', data.imageCounter);
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      });
     } catch (e) {
       console.error('[SESSION] Save failed:', e);
     }
   }
 
-  function loadSession() {
+  async function loadSession() {
     try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (!raw) return false;
-      const data = JSON.parse(raw);
+      const db = await openDB();
+      const data = await new Promise((resolve, reject) => {
+        const tx = db.transaction('session', 'readonly');
+        const req = tx.objectStore('session').get(SESSION_ID);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
 
-      // Only restore if valid incomplete state
-      if (data && typeof data.imageCounter === 'number' && data.imageCounter < 3) {
+      // Restore if data exists and is valid
+      if (data && typeof data.imageCounter === 'number') {
         imageCounter = data.imageCounter;
         capturedImages = data.capturedImages || [];
         console.log('[SESSION] Restored state:', imageCounter);
+
+        // If we were processing or ready to process (counter >= 3), resume it
+        if (imageCounter >= 3) {
+          console.log('[SESSION] Resuming processing...');
+          processImages();
+          return true;
+        }
+
         return true;
       }
     } catch (e) {
@@ -434,9 +461,15 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
     return false;
   }
 
-  function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
-    console.log('[SESSION] Cleared');
+  async function clearSession() {
+    try {
+      const db = await openDB();
+      const tx = db.transaction('session', 'readwrite');
+      tx.objectStore('session').delete(SESSION_ID);
+      console.log('[SESSION] Cleared');
+    } catch (e) {
+      console.error('[SESSION] Clear failed', e);
+    }
   }
 
   // ========== MODALS ==========
@@ -456,10 +489,15 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
     updateKeyStatus();
 
     // Try to restore session
-    loadSession();
-
-    // Show first step
-    showCurrentStep();
+    const restored = await loadSession();
+    if (!restored) {
+      // Only show step 1 if we didn't restore (or if restored state was < 3, loadSession doesn't auto-show step, so we might need to?)
+      // Actually loadSession handles processImages for >=3. 
+      // We just need to call showCurrentStep for < 3.
+      showCurrentStep();
+    } else if (imageCounter < 3) {
+      showCurrentStep();
+    }
   });
 
   saveKeyButton.addEventListener('click', async () => {
