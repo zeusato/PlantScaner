@@ -1,70 +1,84 @@
 # 🌿 Plant Scanner PWA
 
-A Progressive Web App for plant identification and disease detection using Pl@ntNet and Gemini APIs.
+![Plant Scanner Banner](public/Frame%2010134.png)
 
-## Features
+**Plant Scanner** is a modern Progressive Web App (PWA) that turns your smartphone into a powerful botanical assistant. It combines the identification capabilities of **Pl@ntNet** with the deep reasoning and localized knowledge of **Google Gemini AI** to provide instant plant identification, health assessments, and care guides in Vietnamese.
 
-- 📸 **Plant Identification** - Scan plants using your camera
-- 🦠 **Disease Detection** - Detect plant diseases
-- 🤖 **AI-Powered Analysis** - Uses Gemini API for advanced insights
-- 📱 **PWA Support** - Install on your device for offline access
+[**Live Demo**](https://plant-scanner-one.vercel.app/)
 
-## Tech Stack
+## ✨ Key Features
 
-- **Backend**: Node.js (native modules)
-- **Frontend**: HTML, CSS, JavaScript
-- **APIs**: Pl@ntNet, Google Gemini
+- **📸 Smart Scanning Flow**: Guided 3-step capture process (Overview, Leaf, Disease) ensures high-accuracy analysis.
+- **🧠 Advanced AI Analysis**:
+  - Uses **Google Gemini 2.0 Flash (Exp) / 3.0 (Preview)** via the official SDK for detailed insights.
+  - Multi-modal analysis: Processes images + context simultaneously.
+- **💾 Robust Session Persistence**:
+  - Built on **IndexedDB** to store high-resolution images locally.
+  - **Auto-Resume**: Never lose your progress even if the browser reloads or crashes due to memory pressure.
+- **⚡ High Performance**:
+  - **Dynamic Imports**: SDKs load only when needed, ensuring instant startup.
+  - **PWA Ready**: Works offline, installable on Home Screen, and updates automatically via Service Workers.
+- **🇻🇳 Localized Content**: All results, care guides, and fun facts are returned in natural Vietnamese.
 
-## Getting Started
+## 🛠 Tech Stack
+
+- **Frontend**: Vanilla HTML5, CSS3, JavaScript (ES Modules).
+- **Storage**: IndexedDB (via native API) for session & settings.
+- **AI Integration**: `@google/generative-ai` SDK (Client-side) + Pl@ntNet API (Server-side proxy).
+- **Deployment**: Vercel (Serverless Functions for proxying).
+- **PWA**: Service Worker (`v5+`) with aggressive cache-busting strategies.
+
+## 🚀 Getting Started
 
 ### Prerequisites
-
-- Node.js 18.0.0 or higher
+- Node.js 18+ (for local development)
+- A Google Gemini API Key
+- (Optional) PlantNet API Key
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/zeusato/PlantScaner.git
-cd PlantScaner
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/zeusato/PlantScaner.git
+   cd PlantScaner
+   ```
 
-# Install dependencies
-npm install
-```
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-### Development
+3. **Start Local Server**
+   ```bash
+   npm run dev
+   # or
+   npx serve public
+   ```
 
-```bash
-# Start development server with hot-reload
-npm run dev
-```
+4. **Open in Browser**
+   - Navigate to `http://localhost:3000` (or the port shown).
+   - **Note**: Camera features require `HTTPS` or `localhost`.
 
-### Production
+## ⚙️ Configuration
 
-```bash
-npm start
-```
+### API Keys
+The app allows users to input their **own Gemini API Key** directly in the UI.
+1. Click the **Settings (⚙️)** icon in the app.
+2. Enter your Gemini API Key.
+3. The key is stored securely in your browser's **IndexedDB** and is never sent to our backend server (it goes directly to Google).
 
-### Environment Variables
+### Deployment
+This project is optimized for **Vercel**.
 
-| Variable | Description |
-|----------|-------------|
-| `PORT` | Server port (default: 3000) |
-| `PLANTNET_API_KEY` | Your Pl@ntNet API key |
+1. Fork this repo.
+2. Import to Vercel.
+3. (Optional) Add Environment Variables in Vercel for the backend proxy:
+   - `PLANTNET_API_KEY`: If you want to enable the fallback identification.
 
-## Deployment
+## 📱 Mobile Usage
+1. Open the website on Chrome (Android) or Safari (iOS).
+2. Tap **"Add to Home Screen"**.
+3. Launch the app from your home screen for a full-screen, native-like experience.
 
-This project is configured for automatic deployment to Vercel via GitHub Actions.
-
-### Manual Vercel Setup
-
-1. Install Vercel CLI: `npm i -g vercel`
-2. Run `vercel` and follow the prompts
-3. Add secrets to GitHub repository:
-   - `VERCEL_TOKEN`
-   - `VERCEL_ORG_ID`
-   - `VERCEL_PROJECT_ID`
-
-## License
-
-MIT
+## 📄 License
+MIT License.
