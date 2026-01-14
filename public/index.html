@@ -16,6 +16,10 @@
   <meta property="og:description" content="Quét và nhận diện cây trồng, phát hiện bệnh nhanh chóng bằng AI.">
   <meta property="og:image" content="/Frame%2010134.png">
 
+  <!-- Icons -->
+  <link rel="icon" type="image/png" href="64.png">
+  <link rel="apple-touch-icon" href="192.png">
+
   <!-- Twitter -->
   <meta property="twitter:card" content="summary_large_image">
   <meta property="twitter:url" content="https://plant-scanner-one.vercel.app/">
@@ -55,9 +59,12 @@
     <!-- Header with settings icon -->
     <header>
       <h1 class="title">Plant Scanner</h1>
-      <button id="settingsButton" class="settings-btn" title="Cài đặt">
-        &#9881;
-      </button>
+      <div class="header-actions">
+        <button id="installButton" class="icon-btn hidden" title="Cài đặt ứng dụng">⬇️</button>
+        <button id="settingsButton" class="settings-btn" title="Cài đặt">
+          &#9881;
+        </button>
+      </div>
     </header>
 
     <!-- Instruction area -->

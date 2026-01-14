@@ -78,6 +78,12 @@ header {
   backdrop-filter: blur(20px);
 }
 
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .title {
   font-size: 1.5rem;
   font-weight: 700;
@@ -95,25 +101,25 @@ header {
   -webkit-text-fill-color: initial;
 }
 
-.settings-btn {
-  width: 44px;
-  height: 44px;
+.settings-btn,
+.icon-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.4rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.3s ease;
 }
 
-.settings-btn:hover {
-  background: var(--surface-hover);
-  color: var(--primary);
-  transform: rotate(45deg);
+.settings-btn:hover,
+.icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 
 /* Instructions */

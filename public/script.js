@@ -14,7 +14,7 @@ const resultsDiv = document.getElementById('results');
 const keyModal = document.getElementById('keyModal');
 const settingsModal = document.getElementById('settingsModal');
 const settingsButton = document.getElementById('settingsButton');
-const apiKeyInput = document.getElementById('apiKeyInput');
+const installButton = document.getElementById('installButton'); const apiKeyInput = document.getElementById('apiKeyInput');
 const saveKeyButton = document.getElementById('saveKeyButton');
 const changeKeyButton = document.getElementById('changeKeyButton');
 const deleteKeyButton = document.getElementById('deleteKeyButton');
@@ -496,7 +496,6 @@ async function updateKeyStatus() {
 window.addEventListener('DOMContentLoaded', async () => {
   // Helper: Nuke old SW if stuck
 
-  // Helper: Nuke old SW if stuck
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(regs => {
       for (let reg of regs) {
@@ -517,6 +516,24 @@ window.addEventListener('DOMContentLoaded', async () => {
       });
     });
   }
+
+  // PWA Install Logic
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installButton.classList.remove('hidden');
+  });
+
+  installButton.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    deferredPrompt = null;
+    installButton.classList.add('hidden');
+  });
+
   if (!(await getKey())) showModal(keyModal);
   updateKeyStatus();
 
