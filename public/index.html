@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -8,13 +9,15 @@
   <link rel="stylesheet" href="style.css">
   <meta name="theme-color" content="#2e7d32">
 </head>
+
 <body>
   <div id="app">
     <!-- Gemini API key modal -->
     <div id="keyModal" class="modal">
       <div class="modal-content">
         <h2>Nhập khóa API Gemini</h2>
-        <p>Để sử dụng tính năng phân tích nâng cao, bạn cần cung cấp khóa API Gemini của riêng mình. Khóa này sẽ được lưu cục bộ trên thiết bị của bạn (IndexedDB) và không được gửi tới máy chủ.</p>
+        <p>Để sử dụng tính năng phân tích nâng cao, bạn cần cung cấp khóa API Gemini của riêng mình. Khóa này sẽ được
+          lưu cục bộ trên thiết bị của bạn (IndexedDB) và không được gửi tới máy chủ.</p>
         <input id="apiKeyInput" type="password" placeholder="Gemini API Key">
         <div class="modal-buttons">
           <button id="saveKeyButton">Lưu</button>
@@ -65,10 +68,17 @@
     <!-- Hidden file input for capturing images -->
     <input id="fileInput" type="file" accept="image/*" capture="environment" class="hidden" />
 
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden">
+      <div class="spinner"></div>
+      <p id="loadingText">Đang phân tích dữ liệu...</p>
+    </div>
+
     <!-- Results container -->
     <div id="results" class="results hidden"></div>
   </div>
 
   <script src="script.js"></script>
 </body>
+
 </html>

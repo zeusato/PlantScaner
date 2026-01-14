@@ -23,6 +23,7 @@
   const reviewImage = document.getElementById('reviewImage');
   const retakeButton = document.getElementById('retakeButton');
   const confirmButton = document.getElementById('confirmButton');
+  const loadingOverlay = document.getElementById('loadingOverlay');
 
   // Session Key (now used for IDB ID)
   const SESSION_ID = 'current_session';
@@ -48,7 +49,8 @@
 
     // Reset UI states
     reviewContainer.classList.add('hidden');
-    resultsDiv.classList.add('hidden');
+    // resultsDiv.classList.add('hidden'); // Keep results if we are just restarting? No, hide it
+    loadingOverlay.classList.add('hidden');
 
     if (imageCounter >= 3) return;
 
@@ -112,6 +114,7 @@
       capturedImages = [];
       resultsDiv.classList.add('hidden');
       resultsDiv.innerHTML = '';
+      loadingOverlay.classList.add('hidden');
       showCurrentStep();
       return;
     }
@@ -187,9 +190,10 @@
   // ========== PROCESS IMAGES ==========
   // ========== SHOW PROCESSING ==========
   function showProcessing() {
-    instructionsDiv.innerHTML = '<p>⏳ Đang phân tích hình ảnh...</p>';
+    instructionsDiv.innerHTML = ''; // Clear instructions
     scanButton.style.display = 'none';
     reviewContainer.classList.add('hidden');
+    loadingOverlay.classList.remove('hidden');
   }
 
   // ========== PROCESS IMAGES ==========
@@ -239,6 +243,8 @@
       // Set state to DONE (4) so Scan button becomes "Start New"
       imageCounter = 4;
       await clearSession(); // Job done, clear session
+
+      loadingOverlay.classList.add('hidden'); // Hide loading
 
       scanButton.textContent = 'QUÉT CÂY KHÁC';
       scanButton.style.display = '';
