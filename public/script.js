@@ -3,7 +3,7 @@
  * Flow: Show instruction -> User clicks SCAN -> Camera -> Confirm -> Repeat x3 -> API
  */
 
-import { GoogleGenAI } from "@google/generative-ai";
+// import { GoogleGenAI } from "@google/generative-ai"; // Switched to dynamic import to prevent init crash
 
 // (function () { // Removed IIFE because module scope is already isolated
 // DOM Elements
@@ -298,6 +298,7 @@ async function callGemini(apiKey, images) {
     }).filter(Boolean);
 
     // 2. Initialize Gemini Client
+    const { GoogleGenAI } = await import("@google/generative-ai");
     const genAI = new GoogleGenAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
@@ -503,7 +504,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log(msg);
     debugDiv.innerHTML = msg + '<br>' + debugDiv.innerHTML;
   };
-  window.logDebug('[INIT] App started. v5 (GEMINI SDK)');
+  window.logDebug('[INIT] App started. v6 (Dynamic Import)');
 
   // Helper: Nuke old SW if stuck
   if ('serviceWorker' in navigator) {
