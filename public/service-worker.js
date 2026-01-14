@@ -5,7 +5,7 @@
  * falls back to the network.
  */
 
-const CACHE_NAME = 'plant-scanner-cache-v1';
+const CACHE_NAME = 'plant-scanner-cache-v3';
 const ASSETS = [
   '/',
   '/index.html',

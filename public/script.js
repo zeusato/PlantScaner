@@ -43,6 +43,7 @@
   // ========== SHOW CURRENT STEP ==========
   // ========== SHOW CURRENT STEP ==========
   function showCurrentStep() {
+    window.logDebug ? window.logDebug(`[UI] Step ${imageCounter}`) : console.log(`[UI] Step ${imageCounter}`);
     console.log('[UI] Showing step, counter =', imageCounter);
 
     // Reset UI states
@@ -78,7 +79,7 @@
         const img = new Image();
         img.onload = () => {
           let w = img.width, h = img.height;
-          const MAX = 1280;
+          const MAX = 800; // Reduced from 1280 to save memory/storage
           if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
           else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
 
@@ -86,7 +87,7 @@
           canvas.width = w;
           canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
+          resolve(canvas.toDataURL('image/jpeg', 0.5)); // Reduced quality
         };
         img.src = e.target.result;
       };
@@ -482,8 +483,36 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
 
   // ========== INIT ==========
   window.addEventListener('DOMContentLoaded', async () => {
+    // Debug Log
+    const debugDiv = document.createElement('div');
+    debugDiv.id = 'debugLog';
+    debugDiv.style.cssText = 'position:fixed;top:0;left:0;background:rgba(0,0,0,0.7);color:#fff;font-size:10px;padding:5px;z-index:9999;max-width:200px;pointer-events:none;';
+    document.body.appendChild(debugDiv);
+    window.logDebug = msg => {
+      console.log(msg);
+      debugDiv.innerHTML = msg + '<br>' + debugDiv.innerHTML;
+    };
+    window.logDebug('[INIT] App started. v3');
+
+    // Helper: Nuke old SW if stuck
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js').catch(console.error);
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        for (let reg of regs) {
+          // Unregister old ones if needed, or just let the new one take over via browser reload
+          // reg.unregister(); 
+        }
+        navigator.serviceWorker.register('service-worker.js').then(reg => {
+          reg.onupdatefound = () => {
+            const installingWorker = reg.installing;
+            installingWorker.onstatechange = () => {
+              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                window.logDebug('[SW] New version available. Reloading...');
+                window.location.reload();
+              }
+            };
+          };
+        });
+      });
     }
     if (!(await getKey())) showModal(keyModal);
     updateKeyStatus();
