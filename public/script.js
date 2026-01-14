@@ -46,7 +46,6 @@ const INSTRUCTIONS = [
 // ========== SHOW CURRENT STEP ==========
 // ========== SHOW CURRENT STEP ==========
 function showCurrentStep() {
-  window.logDebug ? window.logDebug(`[UI] Step ${imageCounter}`) : console.log(`[UI] Step ${imageCounter}`);
   console.log('[UI] Showing step, counter =', imageCounter);
 
   // Reset UI states
@@ -495,16 +494,7 @@ async function updateKeyStatus() {
 
 // ========== INIT ==========
 window.addEventListener('DOMContentLoaded', async () => {
-  // Debug Log
-  const debugDiv = document.createElement('div');
-  debugDiv.id = 'debugLog';
-  debugDiv.style.cssText = 'position:fixed;top:0;left:0;background:rgba(0,0,0,0.7);color:#fff;font-size:10px;padding:5px;z-index:9999;max-width:200px;pointer-events:none;';
-  document.body.appendChild(debugDiv);
-  window.logDebug = msg => {
-    console.log(msg);
-    debugDiv.innerHTML = msg + '<br>' + debugDiv.innerHTML;
-  };
-  window.logDebug('[INIT] App started. v7 (Fix Class Name)');
+  // Helper: Nuke old SW if stuck
 
   // Helper: Nuke old SW if stuck
   if ('serviceWorker' in navigator) {
@@ -518,7 +508,8 @@ window.addEventListener('DOMContentLoaded', async () => {
           const installingWorker = reg.installing;
           installingWorker.onstatechange = () => {
             if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              window.logDebug('[SW] New version available. Reloading...');
+              // window.logDebug('[SW] New version available. Reloading...');
+              console.log('[SW] New version available. Reloading...');
               window.location.reload();
             }
           };
