@@ -503,7 +503,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log(msg);
     debugDiv.innerHTML = msg + '<br>' + debugDiv.innerHTML;
   };
-  window.logDebug('[INIT] App started. v3');
+  window.logDebug('[INIT] App started. v5 (GEMINI SDK)');
 
   // Helper: Nuke old SW if stuck
   if ('serviceWorker' in navigator) {
