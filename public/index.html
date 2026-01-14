@@ -51,6 +51,17 @@
     <!-- Scan button -->
     <button id="scanButton" class="scan-btn">SCAN</button>
 
+    <!-- Review Container (Hidden by default) -->
+    <div id="reviewContainer" class="hidden">
+      <div class="review-image-wrapper">
+        <img id="reviewImage" src="" alt="Review Capture" />
+      </div>
+      <div class="review-buttons">
+        <button id="retakeButton" class="outline-btn">Chụp lại</button>
+        <button id="confirmButton" class="primary-btn">Tiếp tục</button>
+      </div>
+    </div>
+
     <!-- Hidden file input for capturing images -->
     <input id="fileInput" type="file" accept="image/*" capture="environment" class="hidden" />
 

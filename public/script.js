@@ -18,11 +18,17 @@
   const deleteKeyButton = document.getElementById('deleteKeyButton');
   const closeSettingsButton = document.getElementById('closeSettingsButton');
   const keyStatus = document.getElementById('keyStatus');
+  // Review UI
+  const reviewContainer = document.getElementById('reviewContainer');
+  const reviewImage = document.getElementById('reviewImage');
+  const retakeButton = document.getElementById('retakeButton');
+  const confirmButton = document.getElementById('confirmButton');
 
   // ========== STATE ==========
-  let imageCounter = 0; // 0, 1, 2 (index of current step), 3 means all done
+  let imageCounter = 0; // 0, 1, 2
   let capturedImages = [];
-  let isProcessingFile = false; // Flag to prevent double processing
+  let currentDraft = null; // Temporary storage for the image being reviewed
+  let isProcessingFile = false;
 
   // Instructions for each step
   const INSTRUCTIONS = [
@@ -32,23 +38,33 @@
   ];
 
   // ========== SHOW CURRENT STEP ==========
+  // ========== SHOW CURRENT STEP ==========
   function showCurrentStep() {
     console.log('[UI] Showing step, counter =', imageCounter);
 
-    if (imageCounter >= 3) {
-      // All done, process images
-      instructionsDiv.innerHTML = '<p>⏳ Đang phân tích hình ảnh...</p>';
-      scanButton.style.display = 'none';
-      processImages();
-      return;
-    }
+    // Reset UI states
+    reviewContainer.classList.add('hidden');
+    resultsDiv.classList.add('hidden');
+
+    if (imageCounter >= 3) return;
 
     // Show instruction for current step
     instructionsDiv.innerHTML = `<p>${INSTRUCTIONS[imageCounter]}</p>`;
     scanButton.textContent = 'SCAN';
     scanButton.style.display = '';
     scanButton.disabled = false;
-    resultsDiv.classList.add('hidden');
+  }
+
+  // ========== SHOW REVIEW ==========
+  function showReview(dataUri) {
+    console.log('[UI] Showing review');
+    // Hide Scan UI
+    instructionsDiv.innerHTML = ''; // Keep layout but empty content or hide? Better to just hide scan button
+    scanButton.style.display = 'none';
+
+    // Show Review UI
+    reviewImage.src = dataUri;
+    reviewContainer.classList.remove('hidden');
   }
 
   // ========== COMPRESS IMAGE ==========
@@ -76,15 +92,27 @@
   }
 
   // ========== SCAN BUTTON CLICK ==========
+  // ========== SCAN BUTTON CLICK ==========
   scanButton.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
 
     console.log('[SCAN] Button clicked. Current counter:', imageCounter);
 
-    // Don't open camera if already processing or if all images captured
-    if (isProcessingFile || imageCounter >= 3) {
-      console.log('[SCAN] Blocked - processing or done');
+    // If we are in "Done" state (counter >= 3), this button acts as "Start New"
+    if (imageCounter >= 3) {
+      console.log('[SCAN] Starting new session');
+      imageCounter = 0;
+      capturedImages = [];
+      resultsDiv.classList.add('hidden');
+      resultsDiv.innerHTML = '';
+      showCurrentStep();
+      return;
+    }
+
+    // Don't open camera if processing
+    if (isProcessingFile) {
+      console.log('[SCAN] Blocked - processing');
       return;
     }
 
@@ -98,48 +126,71 @@
   });
 
   // ========== FILE INPUT CHANGE ==========
+  // ========== FILE INPUT CHANGE ==========
   fileInput.addEventListener('change', async (e) => {
-    // Prevent double processing
-    if (isProcessingFile) {
-      console.log('[FILE] Already processing, ignoring');
-      return;
-    }
+    if (isProcessingFile) return;
 
     const file = e.target.files && e.target.files[0];
-    if (!file) {
-      console.log('[FILE] No file selected, user cancelled');
-      return;
-    }
+    if (!file) return;
 
-    console.log('[FILE] Got file:', file.name, 'for step', imageCounter + 1);
-
-    // Set flag to prevent double processing
+    console.log('[FILE] Got file:', file.name);
     isProcessingFile = true;
-    scanButton.disabled = true;
 
     try {
-      // Compress and store image
+      // Compress and show review
       const dataUri = await compressImage(file);
-      capturedImages.push(dataUri);
-      imageCounter++;
+      currentDraft = dataUri;
 
-      console.log('[FILE] Saved! Counter now:', imageCounter, 'Total images:', capturedImages.length);
-
-      // Clear file input
+      // Clear input so same file can be selected again if needed (though we reset later)
       fileInput.value = '';
 
-      // Show next step (do NOT auto-open camera)
-      showCurrentStep();
+      showReview(currentDraft);
     } catch (err) {
       console.error('[FILE] Error:', err);
+      alert('Lỗi xử lý ảnh: ' + err.message);
+      showCurrentStep(); // Fallback
     } finally {
       isProcessingFile = false;
     }
   });
 
+  // ========== REVIEW BUTTONS ==========
+  retakeButton.addEventListener('click', () => {
+    console.log('[REVIEW] Retake clicked');
+    currentDraft = null;
+    showCurrentStep();
+  });
+
+  confirmButton.addEventListener('click', () => {
+    console.log('[REVIEW] Confirm clicked');
+    if (!currentDraft) return;
+
+    capturedImages.push(currentDraft);
+    imageCounter++;
+    currentDraft = null;
+
+    if (imageCounter >= 3) {
+      // Done capturing 3 images
+      processImages();
+    } else {
+      showCurrentStep();
+    }
+  });
+
+  // ========== PROCESS IMAGES ==========
+  // ========== SHOW PROCESSING ==========
+  function showProcessing() {
+    instructionsDiv.innerHTML = '<p>⏳ Đang phân tích hình ảnh...</p>';
+    scanButton.style.display = 'none';
+    reviewContainer.classList.add('hidden');
+  }
+
   // ========== PROCESS IMAGES ==========
   async function processImages() {
     console.log('[PROCESS] Starting with', capturedImages.length, 'images');
+
+    // Ensure processing UI is shown
+    showProcessing();
 
     try {
       let result = null;
@@ -178,12 +229,13 @@
       resultsDiv.classList.remove('hidden');
       resultsDiv.innerHTML = `<p class="error">Lỗi: ${err.message}</p>`;
     } finally {
-      // Reset state for next scan
-      imageCounter = 0;
-      capturedImages = [];
+      // Set state to DONE (4) so Scan button becomes "Start New"
+      imageCounter = 4;
+
+      scanButton.textContent = 'QUÉT CÂY KHÁC';
       scanButton.style.display = '';
       scanButton.disabled = false;
-      instructionsDiv.innerHTML = '<p>Nhấn <strong>SCAN</strong> để quét cây mới.</p>';
+      instructionsDiv.innerHTML = '<p>Đã hoàn thành phân tích.</p>';
     }
   }
 
