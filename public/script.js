@@ -298,8 +298,8 @@ async function callGemini(apiKey, images) {
     }).filter(Boolean);
 
     // 2. Initialize Gemini Client
-    const { GoogleGenAI } = await import("@google/generative-ai");
-    const genAI = new GoogleGenAI(apiKey);
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
     const prompt = `Bạn là chuyên gia thực vật học. Phân tích ảnh cây và trả về JSON:
@@ -504,7 +504,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log(msg);
     debugDiv.innerHTML = msg + '<br>' + debugDiv.innerHTML;
   };
-  window.logDebug('[INIT] App started. v6 (Dynamic Import)');
+  window.logDebug('[INIT] App started. v7 (Fix Class Name)');
 
   // Helper: Nuke old SW if stuck
   if ('serviceWorker' in navigator) {
