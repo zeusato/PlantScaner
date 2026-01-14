@@ -24,6 +24,9 @@
   const retakeButton = document.getElementById('retakeButton');
   const confirmButton = document.getElementById('confirmButton');
 
+  // Session Key
+  const SESSION_KEY = 'plantScanner_session';
+
   // ========== STATE ==========
   let imageCounter = 0; // 0, 1, 2
   let capturedImages = [];
@@ -102,6 +105,7 @@
     // If we are in "Done" state (counter >= 3), this button acts as "Start New"
     if (imageCounter >= 3) {
       console.log('[SCAN] Starting new session');
+      clearSession(); // Clear storage
       imageCounter = 0;
       capturedImages = [];
       resultsDiv.classList.add('hidden');
@@ -167,6 +171,7 @@
 
     capturedImages.push(currentDraft);
     imageCounter++;
+    saveSession(); // Save progress
     currentDraft = null;
 
     if (imageCounter >= 3) {
@@ -231,6 +236,7 @@
     } finally {
       // Set state to DONE (4) so Scan button becomes "Start New"
       imageCounter = 4;
+      clearSession(); // Job done, clear session
 
       scanButton.textContent = 'QUÉT CÂY KHÁC';
       scanButton.style.display = '';
@@ -398,6 +404,41 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
     });
   }
 
+  // ========== SESSION STORAGE ==========
+  function saveSession() {
+    try {
+      const data = { imageCounter, capturedImages };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+      console.log('[SESSION] Saved state:', data.imageCounter);
+    } catch (e) {
+      console.error('[SESSION] Save failed:', e);
+    }
+  }
+
+  function loadSession() {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+
+      // Only restore if valid incomplete state
+      if (data && typeof data.imageCounter === 'number' && data.imageCounter < 3) {
+        imageCounter = data.imageCounter;
+        capturedImages = data.capturedImages || [];
+        console.log('[SESSION] Restored state:', imageCounter);
+        return true;
+      }
+    } catch (e) {
+      console.error('[SESSION] Load failed:', e);
+    }
+    return false;
+  }
+
+  function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+    console.log('[SESSION] Cleared');
+  }
+
   // ========== MODALS ==========
   const showModal = m => m.classList.add('show');
   const hideModal = m => m.classList.remove('show');
@@ -413,6 +454,9 @@ Trả lời bằng tiếng Việt. Chỉ trả về JSON.`;
     }
     if (!(await getKey())) showModal(keyModal);
     updateKeyStatus();
+
+    // Try to restore session
+    loadSession();
 
     // Show first step
     showCurrentStep();
