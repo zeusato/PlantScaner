@@ -5,14 +5,17 @@
  * falls back to the network.
  */
 
-const CACHE_NAME = 'plant-scanner-cache-v5';
+const CACHE_NAME = 'plant-scanner-cache-v6';
 const ASSETS = [
   '/',
   '/index.html',
   '/style.css',
   '/script.js',
   '/manifest.json',
-  '/icon.png'
+  '/64.png',
+  '/192.png',
+  '/512.png',
+  '/Frame%2010134.png'
 ];
 
 self.addEventListener('install', (event) => {

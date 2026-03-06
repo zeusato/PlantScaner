@@ -14,7 +14,11 @@ const resultsDiv = document.getElementById('results');
 const keyModal = document.getElementById('keyModal');
 const settingsModal = document.getElementById('settingsModal');
 const settingsButton = document.getElementById('settingsButton');
-const installButton = document.getElementById('installButton'); const apiKeyInput = document.getElementById('apiKeyInput');
+const installButton = document.getElementById('installButton');
+const exportActions = document.getElementById('exportActions');
+const exportPdfButton = document.getElementById('exportPdfButton');
+const exportImageButton = document.getElementById('exportImageButton');
+const apiKeyInput = document.getElementById('apiKeyInput');
 const saveKeyButton = document.getElementById('saveKeyButton');
 const changeKeyButton = document.getElementById('changeKeyButton');
 const deleteKeyButton = document.getElementById('deleteKeyButton');
@@ -35,6 +39,7 @@ let imageCounter = 0; // 0, 1, 2
 let capturedImages = [];
 let currentDraft = null; // Temporary storage for the image being reviewed
 let isProcessingFile = false;
+let lastResult = null; // Store last analysis result for export
 
 // Instructions for each step
 const INSTRUCTIONS = [
@@ -109,12 +114,13 @@ scanButton.addEventListener('click', async (e) => {
   // If we are in "Done" state (counter >= 3), this button acts as "Start New"
   if (imageCounter >= 3) {
     console.log('[SCAN] Starting new session');
-    console.log('[SCAN] Starting new session');
     await clearSession(); // Clear storage
     imageCounter = 0;
     capturedImages = [];
+    lastResult = null;
     resultsDiv.classList.add('hidden');
     resultsDiv.innerHTML = '';
+    exportActions.classList.add('hidden');
     loadingOverlay.classList.add('hidden');
     showCurrentStep();
     return;
@@ -236,7 +242,9 @@ async function processImages() {
       }
     }
 
+    lastResult = result;
     displayResult(result);
+    exportActions.classList.remove('hidden');
   } catch (err) {
     resultsDiv.classList.remove('hidden');
     resultsDiv.innerHTML = `<p class="error">Lỗi: ${err.message}</p>`;
@@ -563,4 +571,166 @@ settingsButton.addEventListener('click', () => { updateKeyStatus(); showModal(se
 closeSettingsButton.addEventListener('click', () => hideModal(settingsModal));
 changeKeyButton.addEventListener('click', () => { hideModal(settingsModal); showModal(keyModal); });
 deleteKeyButton.addEventListener('click', async () => { await deleteKey(); hideModal(settingsModal); showModal(keyModal); });
-// })(); // End of Module
+
+// ========== EXPORT: PDF ==========
+exportPdfButton.addEventListener('click', () => exportPDF());
+
+async function exportPDF() {
+  if (!lastResult) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const W = 210, H = 297;
+  const M = 15; // margin
+  const CW = W - M * 2; // content width
+  let y = M;
+
+  // -- Helpers --
+  function addText(text, size, style, color, maxW) {
+    doc.setFontSize(size);
+    doc.setFont('helvetica', style);
+    doc.setTextColor(...color);
+    const lines = doc.splitTextToSize(text, maxW || CW);
+    if (y + lines.length * (size * 0.45) > H - M) {
+      doc.addPage();
+      y = M;
+    }
+    doc.text(lines, M, y);
+    y += lines.length * (size * 0.45) + 2;
+  }
+
+  function addLine() {
+    doc.setDrawColor(200);
+    doc.line(M, y, W - M, y);
+    y += 4;
+  }
+
+  // -- Header --
+  doc.setFillColor(34, 100, 50);
+  doc.rect(0, 0, W, 32, 'F');
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('Plant Scanner', M, 15);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(200, 230, 200);
+  const now = new Date();
+  doc.text(`Báo cáo phân tích - ${now.toLocaleDateString('vi-VN')} ${now.toLocaleTimeString('vi-VN')}`, M, 23);
+  y = 40;
+
+  // -- Captured Images --
+  if (capturedImages.length > 0) {
+    addText('ẢNH ĐÃ CHỤP', 12, 'bold', [34, 100, 50]);
+    y += 2;
+    const imgW = (CW - 6) / 3; // 3 columns with 3mm gap
+    const imgH = imgW * 1.1;
+    const labels = ['Toàn cảnh', 'Lá khỏe', 'Vùng bệnh'];
+    capturedImages.forEach((dataUri, i) => {
+      const x = M + i * (imgW + 3);
+      try {
+        doc.addImage(dataUri, 'JPEG', x, y, imgW, imgH);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(120, 120, 120);
+        doc.text(labels[i] || `Ảnh ${i + 1}`, x + imgW / 2, y + imgH + 4, { align: 'center' });
+      } catch (e) {
+        console.warn('[PDF] Image insert failed:', e);
+      }
+    });
+    y += imgW * 1.1 + 10;
+    addLine();
+  }
+
+  // -- Plant ID --
+  if (lastResult.best_match) {
+    const b = lastResult.best_match;
+    addText('NHẬN DIỆN CÂY', 12, 'bold', [34, 100, 50]);
+    if (b.common_name) addText(`Tên thông thường: ${b.common_name}`, 11, 'normal', [40, 40, 40]);
+    if (b.scientific_name) addText(`Tên khoa học: ${b.scientific_name}`, 10, 'italic', [90, 90, 90]);
+    if (b.family) addText(`Họ: ${b.family}`, 10, 'normal', [90, 90, 90]);
+    if (b.confidence) addText(`Độ tin cậy: ${Math.round(b.confidence * 100)}%`, 10, 'normal', [90, 90, 90]);
+    y += 2;
+    addLine();
+  }
+
+  // -- Health --
+  if (lastResult.health_assessment) {
+    const h = lastResult.health_assessment;
+    addText('SỨC KHỎE CÂY', 12, 'bold', [34, 100, 50]);
+    if (h.status) addText(h.status, 10, 'normal', [40, 40, 40]);
+    if (h.possible_issues?.length) {
+      h.possible_issues.forEach(issue => {
+        let t = `• ${issue.name}`;
+        if (issue.likelihood) t += ` (${Math.round(issue.likelihood * 100)}%)`;
+        addText(t, 10, 'bold', [60, 60, 60]);
+        if (issue.safe_actions) addText(`  💡 ${issue.safe_actions}`, 9, 'normal', [90, 90, 90]);
+      });
+    }
+    y += 2;
+    addLine();
+  }
+
+  // -- Care guide --
+  if (lastResult.care_guide) {
+    const c = lastResult.care_guide;
+    addText('HƯỚNG DẪN CHĂM SÓC', 12, 'bold', [34, 100, 50]);
+    if (c.watering) addText(`💧 Tưới nước: ${c.watering}`, 10, 'normal', [40, 40, 40]);
+    if (c.light) addText(`☀️ Ánh sáng: ${c.light}`, 10, 'normal', [40, 40, 40]);
+    if (c.soil) addText(`🌱 Đất: ${c.soil}`, 10, 'normal', [40, 40, 40]);
+    if (c.fertilizing) addText(`🧪 Phân bón: ${c.fertilizing}`, 10, 'normal', [40, 40, 40]);
+    y += 2;
+    addLine();
+  }
+
+  // -- Fun facts --
+  if (lastResult.fun_facts?.length) {
+    addText('THÔNG TIN THÚ VỊ', 12, 'bold', [34, 100, 50]);
+    lastResult.fun_facts.forEach(f => addText(`✨ ${f}`, 10, 'normal', [60, 60, 60]));
+  }
+
+  // -- Footer --
+  const pagesCount = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= pagesCount; p++) {
+    doc.setPage(p);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(160, 160, 160);
+    doc.text('Plant Scanner — plant-scanner-one.vercel.app', M, H - 8);
+    doc.text(`Trang ${p}/${pagesCount}`, W - M, H - 8, { align: 'right' });
+  }
+
+  const plantName = lastResult.best_match?.common_name || lastResult.best_match?.scientific_name || 'PlantScan';
+  doc.save(`${plantName.replace(/[^a-zA-Z0-9À-ỹ\s]/g, '')}_report.pdf`);
+}
+
+// ========== EXPORT: IMAGE ==========
+exportImageButton.addEventListener('click', () => exportImage());
+
+async function exportImage() {
+  if (!resultsDiv || resultsDiv.classList.contains('hidden')) return;
+
+  // Temporarily expand results for full capture
+  const origMaxH = resultsDiv.style.maxHeight;
+  const origOverflow = resultsDiv.style.overflow;
+  resultsDiv.style.maxHeight = 'none';
+  resultsDiv.style.overflow = 'visible';
+
+  try {
+    const canvas = await html2canvas(resultsDiv, {
+      backgroundColor: '#0f172a',
+      scale: 2,
+      useCORS: true,
+      logging: false
+    });
+    const link = document.createElement('a');
+    link.download = 'plant-scan-result.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    console.error('[EXPORT IMAGE] Error:', err);
+    alert('Không thể tải ảnh. Vui lòng thử lại.');
+  } finally {
+    resultsDiv.style.maxHeight = origMaxH;
+    resultsDiv.style.overflow = origOverflow;
+  }
+}
