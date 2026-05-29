@@ -585,14 +585,24 @@ async function exportPDF() {
   let y = M;
 
   // -- Helpers --
+  function paintPageBackground() {
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, W, H, 'F');
+  }
+
+  function addPage() {
+    doc.addPage();
+    paintPageBackground();
+    y = M;
+  }
+
   function addText(text, size, style, color, maxW) {
     doc.setFontSize(size);
     doc.setFont('helvetica', style);
     doc.setTextColor(...color);
     const lines = doc.splitTextToSize(text, maxW || CW);
     if (y + lines.length * (size * 0.45) > H - M) {
-      doc.addPage();
-      y = M;
+      addPage();
     }
     doc.text(lines, M, y);
     y += lines.length * (size * 0.45) + 2;
@@ -603,6 +613,8 @@ async function exportPDF() {
     doc.line(M, y, W - M, y);
     y += 4;
   }
+
+  paintPageBackground();
 
   // -- Header --
   doc.setFillColor(34, 100, 50);

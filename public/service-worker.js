@@ -5,12 +5,13 @@
  * falls back to the network.
  */
 
-const CACHE_NAME = 'plant-scanner-cache-v6';
+const CACHE_NAME = 'plant-scanner-cache-v7';
 const ASSETS = [
   '/',
   '/index.html',
   '/style.css',
   '/script.js',
+  '/script.js?v=9',
   '/manifest.json',
   '/64.png',
   '/192.png',
